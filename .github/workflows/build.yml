@@ -1,21 +1,17 @@
 name: Build Atlas Kernel
-
 on:
   push:
     branches: [ master ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
       - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
-
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -31,27 +27,49 @@ jobs:
             ccache \
             zip \
             device-tree-compiler
-
       - name: Download AOSP Clang
         run: |
-          mkdir -p clang-r547379
-          curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz" -o clang.tar.gz
-          tar -xzf clang.tar.gz -C clang-r547379
-          chmod -R +x clang-r547379/bin
-          rm -f clang.tar.gz
-
+          set -e
+          MIRROR_URL="https://github.com/msft-mirror-aosp/platform.prebuilts.clang.host.linux-x86.git"
+          CLANG_VER="clang-r547379"
+          success=0
+          for i in 1 2 3; do
+            echo "Attempt $i: cloning $MIRROR_URL (sparse: $CLANG_VER)"
+            rm -rf clang-repo
+            if git clone --filter=blob:none --no-checkout --depth=1 "$MIRROR_URL" clang-repo; then
+              cd clang-repo
+              git sparse-checkout init --cone
+              git sparse-checkout set "$CLANG_VER"
+              git checkout master
+              cd ..
+              success=1
+              break
+            fi
+            echo "Clone attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          if [ "$success" -ne 1 ]; then
+            echo "::error::Không thể clone toolchain từ mirror GitHub sau 3 lần thử"
+            exit 1
+          fi
+          mv "clang-repo/$CLANG_VER" "./$CLANG_VER"
+          rm -rf clang-repo
+          chmod -R +x "$CLANG_VER/bin"
+          if [ ! -f "$CLANG_VER/bin/clang" ]; then
+            echo "::error::Không tìm thấy $CLANG_VER/bin/clang sau khi checkout"
+            find "$CLANG_VER" -maxdepth 2
+            exit 1
+          fi
+          echo "Clang toolchain OK: $(du -sh $CLANG_VER | cut -f1)"
       - name: Build kernel
         run: |
           export PATH="$(pwd)/clang-r547379/bin:${PATH}"
           export ARCH=arm64
           export LLVM=1
           export LLVM_IAS=1
-
           mkdir out
-
           make ARCH=arm64 O=out CC=clang exynos850-a21snsxx_defconfig
           make ARCH=arm64 O=out CC=clang -j$(nproc)
-
       - name: Build dtb
         run: |
           dtc -I dts -O dtb -o raw.dtb arch/arm64/boot/dts/exynos/exynos3830.dts
@@ -59,7 +77,6 @@ jobs:
           chmod +x mkdtimg
           ./mkdtimg create dtb --page_size=2048 --custom1=0xff000000 raw.dtb
           echo "dtb size: $(du -h dtb | cut -f1)"
-
       - name: Verify build
         run: |
           if [ ! -f out/arch/arm64/boot/Image ]; then
@@ -67,7 +84,6 @@ jobs:
             exit 1
           fi
           echo "Kernel Image size: $(du -h out/arch/arm64/boot/Image | cut -f1)"
-
       - name: Package flashable zip
         run: |
           BUILD_SHA=$(git rev-parse --short HEAD)
@@ -78,17 +94,13 @@ jobs:
           cp out/arch/arm64/boot/Image AnyKernel3/
           cp dtb AnyKernel3/dtb
           cp .github/anykernel.sh AnyKernel3/anykernel.sh
-
           cd AnyKernel3
           rm -f kernel/zImage
           chmod +x anykernel.sh
-
           zip -r9 "${GITHUB_WORKSPACE}/atlas.zip" * -x .git README.md *placeholder
-
           echo "BUILD_SHA=${BUILD_SHA}" >> "${GITHUB_ENV}"
-
       - name: Upload flashable zip
         uses: actions/upload-artifact@v4
         with:
           name: kernel-${{ env.BUILD_SHA }}.zip
-          path: atlas.zip
+          path: atlas.zip 
