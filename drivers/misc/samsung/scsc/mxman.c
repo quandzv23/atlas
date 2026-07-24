@@ -203,7 +203,7 @@ MODULE_PARM_DESC(disable_error_handling, "Disable error handling");
 static int disable_recovery_handling = 2; /* MEMDUMP_FILE_FOR_RECOVERY : for /sys/wifi/memdump */
 #else
 /* AOSP */
-static int disable_recovery_handling = 1; /* Recovery disabled, enable in init.rc, not here. */
+static int disable_recovery_handling = 0; /* Recovery disabled, enable in init.rc, not here. */
 #endif
 
 module_param(disable_recovery_handling, int, S_IRUGO | S_IWUSR);
