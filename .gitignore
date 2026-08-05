@@ -134,3 +134,10 @@ all.config
 
 # Build directory
 /out
+build.log
+clang-r547379/
+susfs_patched_files.zip
+upstream-atlas/
+integrate_susfs.sh
+*.orig
+*.rej
