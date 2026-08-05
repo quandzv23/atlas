@@ -67,6 +67,8 @@ jobs:
           export ARCH=arm64
           export LLVM=1
           export LLVM_IAS=1
+          export KBUILD_BUILD_USER=android-build
+          export KBUILD_BUILD_HOST=android-build
           mkdir out
           make ARCH=arm64 O=out CC=clang exynos850-a21snsxx_defconfig
           make ARCH=arm64 O=out CC=clang -j$(nproc)
